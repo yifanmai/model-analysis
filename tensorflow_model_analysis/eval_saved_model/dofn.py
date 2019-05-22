@@ -61,16 +61,25 @@ class EvalSavedModelDoFn(beam.DoFn):
     self._eval_saved_model = None  # type: load.EvalSavedModel
     self._model_load_seconds = beam.metrics.Metrics.distribution(
         constants.METRICS_NAMESPACE, 'model_load_seconds')
+    self._setup_called = False
 
-  def start_bundle(self):
-    construct_fn = make_construct_fn(
+  def setup_if_needed(self):
+    if not self._setup_called:
+      self._setup_called = True
+      construct_fn = make_construct_fn(
         self._eval_shared_model.model_path,
         self._eval_shared_model.add_metrics_callbacks,
         self._eval_shared_model.include_default_metrics,
         self._eval_shared_model.additional_fetches)
-    self._eval_saved_model = (
-        self._eval_shared_model.shared_handle.acquire(
-            construct_fn(self._model_load_seconds)))
+      self._eval_saved_model = (
+          self._eval_shared_model.shared_handle.acquire(
+              construct_fn(self._model_load_seconds)))
+
+  def setup(self):
+    self.setup_if_needed()
+
+  def start_bundle(self):
+    self.setup_if_needed()
 
   def process(self, elem):
     raise NotImplementedError('not implemented')

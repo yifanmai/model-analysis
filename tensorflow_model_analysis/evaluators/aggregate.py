@@ -517,31 +517,38 @@ class _ExtractOutputDoFn(beam.DoFn):
     self._num_bootstrap_empties = beam.metrics.Metrics.counter(
         constants.METRICS_NAMESPACE, 'num_bootstrap_empties')
     self._counters_incremented = False
+    self._setup_called = False
 
-  def start_bundle(self) -> None:
-    # There's no initialisation method for CombineFns.
-    # See BEAM-3736: Add SetUp() and TearDown() for CombineFns.
+  def setup_if_needed(self):
     # Default to eval_saved_model dofn to preserve legacy assumption
     # of eval_saved_model.
     # TODO(ihchen): Update all callers and make this an error condition to not
     # have construct_fn specified.
-    if not self._counters_incremented:
-      self._counters_incremented = True
-      counter_util.update_beam_counters(
-          self._eval_shared_model.add_metrics_callbacks)
-    if self._eval_shared_model.construct_fn is None:
-      construct_fn = dofn.make_construct_fn(
-          eval_saved_model_path=self._eval_shared_model.model_path,
-          add_metrics_callbacks=self._eval_shared_model.add_metrics_callbacks,
-          include_default_metrics=True,
-          additional_fetches=None)
-      self._eval_saved_model = (
-          self._eval_shared_model.shared_handle.acquire(
-              construct_fn(self._model_load_seconds)))
-    else:
-      self._eval_saved_model = (
-          self._eval_shared_model.shared_handle.acquire(
-              self._eval_shared_model.construct_fn(self._model_load_seconds)))
+    if not self._setup_called:
+      self._setup_called = True
+      if not self._counters_incremented:
+        self._counters_incremented = True
+        counter_util.update_beam_counters(
+            self._eval_shared_model.add_metrics_callbacks)
+      if self._eval_shared_model.construct_fn is None:
+        construct_fn = dofn.make_construct_fn(
+            eval_saved_model_path=self._eval_shared_model.model_path,
+            add_metrics_callbacks=self._eval_shared_model.add_metrics_callbacks,
+            include_default_metrics=True,
+            additional_fetches=None)
+        self._eval_saved_model = (
+            self._eval_shared_model.shared_handle.acquire(
+                construct_fn(self._model_load_seconds)))
+      else:
+        self._eval_saved_model = (
+            self._eval_shared_model.shared_handle.acquire(
+                self._eval_shared_model.construct_fn(self._model_load_seconds)))
+
+  def setup(self):
+    self.setup_if_needed()
+
+  def start_bundle(self):
+    self.setup_if_needed()
 
   def process(
       self, element: Tuple[slicer.SliceKeyType, types.MetricVariablesType]

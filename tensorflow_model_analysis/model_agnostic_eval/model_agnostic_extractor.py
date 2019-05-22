@@ -116,6 +116,7 @@ class _ModelAgnosticExtractDoFn(beam.DoFn):
     self._shared_handle = shared.Shared()
     self._model_load_seconds = beam.metrics.Metrics.distribution(
         constants.METRICS_NAMESPACE, 'model_load_seconds')
+    self._setup_called = False
 
   def _make_construct_fn(  # pylint: disable=invalid-name
       self, model_agnostic_config: agnostic_predict.ModelAgnosticConfig,
@@ -133,10 +134,18 @@ class _ModelAgnosticExtractDoFn(beam.DoFn):
 
     return construct
 
-  def start_bundle(self):
-    self._model_agnostic_wrapper = self._shared_handle.acquire(
+  def setup_if_needed(self):
+    self._setup_called = True
+    if not self._setup_called:
+      self._model_agnostic_wrapper = self._shared_handle.acquire(
         self._make_construct_fn(self._model_agnostic_config,
                                 self._model_load_seconds))
+
+  def setup(self):
+    self.setup_if_needed()
+
+  def start_bundle(self):
+    self.setup_if_needed()
 
   def process(self, element: List[types.Extracts]
              ) -> Generator[types.Extracts, None, None]:
